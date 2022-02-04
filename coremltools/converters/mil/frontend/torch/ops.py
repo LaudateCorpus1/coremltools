@@ -340,6 +340,21 @@ def constant(context, node):
     context.add(const, torch_name=name)
 
 @register_torch_op
+def dot(context, node):
+    inputs = _get_inputs(context, node, expected=2)
+    xy = mb.mul(x=inputs[0], y=inputs[1])
+    sum_xy = mb.reduce_sum(x=xy, axes=[0])
+    context.add(sum_xy, node.name)
+
+@register_torch_op
+def mv(context, node):
+    inputs = _get_inputs(context, node, expected=2)
+    expand = mb.expand_dims(x=inputs[1], axes=[-1], name=node.name + "_expanded")
+    mv = mb.matmul(x=inputs[0], y=expand, name=node.name + "_mv")
+    res = mb.squeeze(x=mv, axes=[-1], name=node.name)
+    context.add(res)
+
+@register_torch_op
 def frobenius_norm(context, node):
     x, dim, keep_dims = _get_inputs(context, node, expected=3)
     result = mb.reduce_l2_norm(x=x, axes=dim, keep_dims=keep_dims, name=node.name)
@@ -3164,8 +3179,11 @@ def unbind(context, node):
     x = inputs[0]
     dim = inputs[1].val
     split_sizes = [1]*x.shape[dim]
-    res = mb.split(x=x, split_sizes=split_sizes, axis=dim, name=node.name)
-    res = [mb.squeeze(x=x, axes=[dim]) for x in res]
+    if len(split_sizes) == 1:
+        res = [mb.squeeze(x=x, axes=[dim])]
+    else:
+        res = mb.split(x=x, split_sizes=split_sizes, axis=dim, name=node.name)
+        res = [mb.squeeze(x=x, axes=[dim]) for x in res]
     context.add(res, torch_name=node.name)
 
 @register_torch_op
